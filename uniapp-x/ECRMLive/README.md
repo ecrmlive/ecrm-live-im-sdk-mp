@@ -1,0 +1,11 @@
+# ECRMLive
+
+This is an independent uni-app x application for the UTS SDK on **H5/Web and WeChat mini-program**. It conditionally imports `web/index.uts` or `mp-weixin/index.uts`; it does not use the Android/iOS/Harmony native SDKs and it is not a TypeScript implementation.
+
+Open `uniapp-x/ECRMLive` in HBuilderX. The application uses the sibling Core and UI dependency modules, so keep the repository layout intact. For a standalone app, copy both modules to the app root and update their relative import paths. ECRMLive demonstrates business registration/login, short-lived session credentials, conversation, chat, group, contact and profile entry points.
+
+Boundary: login, registration, app navigation, TabBar, profile, settings, language, registered-user list and all application assets stay in this application. The UI dependency module contains only conversation, contact and chat surfaces; it has no business route or fixture fallback.
+
+Run against H5 or 微信小程序. `ECRMLiveConfig.uts` declares `apiDomain`、`imDomain`、`cosDomain` once for the app. Login and registration are independent pages: login requires mobile number, password and graphical captcha; registration additionally requires a unique nickname. Mainland China mobile numbers accept 11 digits; international numbers use E.164. “Contacts → Add Friend” opens the registered Demo-user list and creates a real bidirectional IM friendship.
+
+The business backend returns the application ID, user ID, short-lived user signature, `expireAt` and a rotating refresh session. The application passes `expireAt` and a host-owned refresh provider to Core; Core renews automatically five minutes before expiry and after IM HTTP `401` or WSS expiry events. A refresh failure clears the session and returns to login. Do not persist a password, captcha or user signature. The application persists only the refresh session needed for restore; production must protect it with an appropriate secure storage strategy and must not put it, a user signature, or a signing secret in source or logs. The default UTS setting intentionally keeps messages, outbox and cursor only in memory; add a reviewed runtime `localStorageCipher` if durable encrypted storage is required.

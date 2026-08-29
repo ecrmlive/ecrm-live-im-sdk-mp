@@ -1,0 +1,14 @@
+import { ECRMLiveBaseConfig as ECRMLiveSDKBaseConfig } from './uni_modules/ecrm-live-sdk/utssdk/interface.uts'
+
+/** Application-scoped connection configuration. It is intentionally separate from business login. */
+export const ECRMLiveBaseConfig: ECRMLiveSDKBaseConfig = {
+  // Local Docker development endpoints. H5 and WeChat DevTools run on the host;
+  // production hosts replace these values during their own application build.
+  apiDomain: 'http://127.0.0.1:11504',
+  imDomain: 'ws://127.0.0.1:11510/ws',
+  cosDomain: 'http://127.0.0.1:11504',
+  // Fill platform-restricted AMap keys in the host app; never use a server Web Service key here.
+  map: { provider: 'amap', h5Key: '', wechatMiniProgramKey: '' },
+  themeMode: 'system',
+  language: 'en-US',
+}

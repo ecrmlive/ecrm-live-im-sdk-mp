@@ -1,0 +1,7 @@
+import { ECRMLiveBaseConfig, resolveECRMLiveBaseConfig } from '../../uni_modules/ecrm-live-sdk/utssdk/interface.uts'
+
+/** Public test-server endpoints (SDK defaults). UserSig values are issued at runtime and never persisted. */
+export const ECRMLiveAcceptanceBaseConfig: ECRMLiveBaseConfig = resolveECRMLiveBaseConfig({
+  themeMode: 'system',
+  language: 'en-US',
+})

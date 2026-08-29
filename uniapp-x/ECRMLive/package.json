@@ -1,0 +1,10 @@
+{
+  "id": "ecrm-live",
+  "name": "ecrm-live",
+  "displayName": "ECRMLive",
+  "version": "0.1.0-alpha",
+  "description": "ECRMLive uni-app x UTS IM application",
+  "keywords": ["uni-app-x", "uts", "im"],
+  "engines": { "HBuilderX": "^5.0" },
+  "dcloudext": { "type": "uniapp-template-project" }
+}

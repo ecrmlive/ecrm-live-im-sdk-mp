@@ -1,0 +1,39 @@
+{
+	"name": "ECRMLive",
+	"appid": "__UNI__9B20802",
+	"description": "ECRMLive uni-app x UTS IM application",
+	"versionName": "1.0.0",
+	"versionCode": 100,
+	"uni-app-x": {
+		"vapor": true,
+		"styleIsolationVersion": "2"
+	},
+	"vueVersion": "3",
+	"web": {
+		"title": "ECRMLive",
+		"router": {
+			"mode": ""
+		},
+		"sdkConfigs": {
+			"maps": {
+				"amap": {
+					"key": "",
+					"securityJsCode": ""
+				}
+			}
+		}
+	},
+	"mp-weixin": {
+		"appid": "wx355c3f642c588462",
+		"setting": {
+			"es6": true,
+			"postcss": true,
+			"minified": true
+		},
+		"permission": {
+			"scope.userLocation": {
+				"desc": "聊天发送定位"
+			}
+		}
+	}
+}

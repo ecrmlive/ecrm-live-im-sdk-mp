@@ -1,0 +1,271 @@
+<template>
+  <view :class="['app', { dark: darkMode }]">
+    <view v-if="statusBarHeight > 0" class="system-status-bar" :style="{ height: statusBarHeight + 'px', backgroundColor: systemBarColor }"></view>
+    <view v-if="screen === 'login' || screen === 'register'" class="auth-page">
+      <ECRMLiveAuthNavigation :language="selectedLanguage" :dark="darkMode" :show-back="screen === 'register'" :right-inset="navigationRightInset" @back="returnToLogin" @language-select="selectLanguage" @theme-select="selectTheme" />
+      <scroll-view class="auth-scroll" scroll-y>
+        <view class="auth-content">
+          <view class="auth-brand" @longpress="openVisualPreview"><image class="auth-logo" src="/static/demo/ECRMLiveLogo.png" mode="aspectFit" /><text class="auth-title">ECRMLive</text><text class="auth-subtitle">Secure · Private · Efficient</text></view>
+          <view class="auth-card">
+            <text class="auth-label">{{ english ? 'Mobile' : '手机号' }}</text>
+            <input v-model="mobile" class="auth-input" type="number" :placeholder="english ? 'Mobile (+86 or international)' : '手机号（中国或国际）'" />
+            <template v-if="screen === 'register'"><text class="auth-label">{{ english ? 'Nickname' : '昵称' }}</text><input v-model="nickname" class="auth-input" :placeholder="english ? 'Nickname (required to register)' : '昵称（注册必填）'" /></template>
+            <text class="auth-label">{{ english ? 'Password' : '密码' }}</text>
+            <view class="auth-password-row"><input v-model="password" class="auth-input" :password="passwordHidden" :placeholder="english ? 'Password' : '密码'" /><image :class="['auth-password-toggle', { 'is-dark': darkMode }]" :src="passwordHidden ? '/static/demo/ECRMLivePasswordHidden.png' : '/static/demo/ECRMLivePasswordVisible.png'" mode="aspectFit" @click.stop="passwordHidden = !passwordHidden" /></view>
+            <text class="auth-label">{{ english ? 'Verification code' : '图形验证码' }}</text>
+            <view class="captcha-row"><input v-model="captchaCode" class="auth-input captcha-input" :placeholder="english ? 'Code' : '验证码'" :maxlength="4" /><image class="captcha-image" :src="captchaImage.length > 0 ? captchaImage : '/static/demo/ECRMLiveCaptchaFallback.png'" mode="aspectFit" @click="reloadCaptcha" /></view>
+            <button class="auth-submit" @click="authenticate"><image src="/static/demo/ECRMLiveLoginIcon.png" mode="aspectFit" /><text>{{ screen === 'register' ? (english ? 'Register' : '注册') : (english ? 'Login' : '登录') }}</text></button>
+            <button v-if="screen === 'login'" class="auth-register" @click="openRegistration">{{ english ? 'Create demo account' : '注册演示账号' }}</button>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <view v-else-if="screen === 'conversations'" class="root-screen"><ECRMLiveUIConversationList :client="client" :dark="darkMode" :english="english" :right-inset="navigationRightInset" :sync-revision="listSyncRevision" @select-detail="openConversationChat" @unread-total="updateUnreadTotal" @add="showAddFriendNotice" /></view>
+    <view v-else-if="screen === 'contacts'" class="root-screen"><ECRMLiveUIContactList :client="client" :include-groups="true" :dark="darkMode" :english="english" :right-inset="navigationRightInset" :sync-revision="listSyncRevision" @select="openContactChat" @add-group="openDemoGroup" @add="showAddFriendNotice" @error="showNotice" /></view>
+    <view v-else-if="screen === 'add-friend'" class="sub-page">
+      <view class="back-header"><button @click="screen = 'contacts'"><image :src="darkMode ? '/static/demo/ECRMLiveChatNavBackDark.png' : '/static/demo/ECRMLiveChatNavBackLight.svg'" mode="aspectFit" /></button><text>{{ english ? 'Registered demo users' : '已注册演示用户' }}</text></view>
+      <scroll-view class="settings-scroll" scroll-y :refresher-enabled="true" :refresher-triggered="demoUsersRefreshing" :refresher-default-style="darkMode ? 'white' : 'black'" refresher-background="transparent" @refresherrefresh="refreshDemoUsers" @scrolltolower="loadMoreDemoUsers"><view class="demo-user-list"><view v-for="user in demoUsers" :key="user.userId" class="demo-user-row"><view class="demo-user-avatar"><text>{{ demoUserInitial(user) }}</text></view><view class="demo-user-copy"><text>{{ user.nickname }}</text><text>{{ user.mobile }}</text></view><button class="demo-user-add" @click="addDemoFriend(user)"><text>{{ english ? 'Add' : '添加' }}</text></button></view><text v-if="demoUsers.length === 0 && !demoUsersLoading" class="demo-user-empty">{{ english ? 'No other demo user yet.' : '还没有其他演示用户。' }}</text><text v-if="demoUsersLoading || demoUsersHasMore" class="demo-user-load-state">{{ demoUsersLoading ? (english ? 'Loading…' : '加载中…') : (english ? 'Pull up to load more' : '上拉加载更多') }}</text><text v-else-if="demoUsers.length > 0" class="demo-user-load-state">{{ english ? 'No more users' : '没有更多用户了' }}</text></view></scroll-view>
+    </view>
+    <view v-else-if="screen === 'profile'" class="root-screen profile-page">
+      <view class="page-header"><image src="/static/demo/ECRMLiveConversationLogo.png" mode="aspectFit" /><text>{{ english ? 'Me' : '我的' }}</text></view>
+      <scroll-view class="profile-scroll" scroll-y>
+        <view class="identity"><view class="identity-avatar"><image v-if="profileAvatar.length > 0" :src="profileAvatar" mode="aspectFill" /><text v-else>{{ profileNickname.length > 0 ? profileNickname.substring(0, 1) : (english ? 'Me' : '我') }}</text><view></view></view><view class="identity-copy"><text>{{ profileNickname || nickname || userId }}</text><text>ID: {{ userId }}</text></view><text class="chevron">›</text></view>
+        <view class="shortcut-row"><view v-for="item in shortcuts" :key="item.title" class="shortcut"><image :src="item.icon" mode="aspectFit" /><text class="shortcut-value">{{ item.value }}</text><text>{{ item.title }}</text></view></view>
+        <view class="profile-rows">
+          <view class="profile-row" @click="toggleAppearance"><image src="/static/demo/ECRMLiveProfileTheme.png" mode="aspectFit" /><text>{{ darkMode ? (english ? 'Dark Mode' : '深色模式') : (english ? 'Light Mode' : '浅色模式') }}</text><image class="switch-image" :src="switchImage(darkMode)" mode="aspectFit" /></view>
+          <view class="profile-row" @click="screen = 'language'"><image src="/static/demo/ECRMLiveProfileLanguage.png" mode="aspectFit" /><text>{{ english ? 'Language' : '语言' }}</text><text class="language-tag">{{ languageName }}</text></view>
+          <view v-for="item in profileItems" :key="item.title" class="profile-row" @click="openProfileItem(item.key)"><image :src="item.icon" mode="aspectFit" /><text>{{ item.title }}</text><text class="chevron">›</text></view>
+        </view>
+        <button class="logout" @click="logout"><image src="/static/demo/ECRMLiveProfileLogout.png" mode="aspectFit" /><text>{{ english ? 'Log Out' : '退出登录' }}</text></button>
+      </scroll-view>
+    </view>
+
+    <view v-else-if="screen === 'settings'" class="sub-page"><view class="back-header"><button @click="screen = 'profile'"><image :src="darkMode ? '/static/demo/ECRMLiveChatNavBackDark.png' : '/static/demo/ECRMLiveChatNavBackLight.svg'" mode="aspectFit" /></button><text>{{ english ? 'Settings' : '设置' }}</text></view><scroll-view class="settings-scroll" scroll-y><view class="settings-content"><view class="setting-card"><text class="setting-title">{{ english ? 'APPEARANCE · 外观' : '外观 · 外观' }}</text><view class="settings-row" @click="toggleAppearance"><image src="/static/demo/ECRMLiveProfileTheme.png" mode="aspectFit" /><view><text>{{ darkMode ? (english ? 'Dark Mode' : '深色模式') : (english ? 'Light Mode' : '浅色模式') }}</text><text>{{ darkMode ? (english ? 'Dark' : '深色') : (english ? 'Light' : '浅色') }}</text></view><image class="switch-image" :src="switchImage(darkMode)" mode="aspectFit" /></view><view class="settings-row" @click="screen = 'language'"><image src="/static/demo/ECRMLiveProfileLanguage.png" mode="aspectFit" /><view><text>{{ english ? 'Language' : '语言' }}</text><text>{{ languageName }}</text></view><text class="language-tag">{{ languageTag }}</text></view></view><view class="setting-card"><text class="setting-title">{{ english ? 'NOTIFICATIONS · 通知' : '通知 · 通知' }}</text><view v-for="item in notificationItems" :key="item.key" class="settings-row" @click="toggleSetting(item.key)"><image :src="item.icon" mode="aspectFit" /><view><text>{{ item.title }}</text><text>{{ item.subtitle }}</text></view><image class="switch-image" :src="switchImage(item.value)" mode="aspectFit" /></view></view><view class="setting-card"><text class="setting-title">{{ english ? 'PRIVACY & SECURITY · 隐私' : '隐私与安全 · 隐私' }}</text><view v-for="item in settingsLinks" :key="item.title" class="settings-row" @click="showNotice(item.subtitle)"><image :src="item.icon" mode="aspectFit" /><view><text>{{ item.title }}</text><text>{{ item.subtitle }}</text></view><text class="chevron">›</text></view></view><view class="version"><text>ECRMLive v1.0.0</text><text>© 2026 ECRMLive</text></view></view></scroll-view></view>
+
+    <view v-else-if="screen === 'language'" class="sub-page"><view class="back-header"><button @click="screen = 'profile'"><image :src="darkMode ? '/static/demo/ECRMLiveChatNavBackDark.png' : '/static/demo/ECRMLiveChatNavBackLight.svg'" mode="aspectFit" /></button><text>{{ english ? 'Language' : '语言' }}</text></view><view class="language-card"><view v-for="item in languages" :key="item.value" class="language-row" @click="selectLanguage(item.value)"><view><text>{{ item.title }}</text><text>{{ item.subtitle }}</text></view><view class="radio" :class="{ selected: selectedLanguage === item.value }"></view></view></view></view>
+
+    <view v-else class="chat-screen"><ECRMLiveUIChat :key="'chat-' + conversationId + '-' + darkMode + '-' + selectedLanguage" :client="client" :conversation-id="conversationId" :title="chatTitle" :subtitle="chatSubtitle" :header-avatar="chatAvatar" :avatar-urls="avatarDirectory" :right-inset="navigationRightInset" :media-resolver="resolveMedia" @back="closeChat" @action="handleAction" @message-action="handleMessageAction" @error="showNotice" /></view>
+
+    <view v-if="isRootScreen" class="tabbar">
+      <view :class="['tab', { selected: screen === 'conversations' }]" @click="switchRootTab('conversations')"><view class="tab-image"><image :class="['tab-icon', { 'chat-unselected': screen !== 'conversations' }]" :src="tabImage('conversations')" mode="aspectFit" /><text v-if="unreadTotal > 0" class="tab-badge">{{ unreadTotal > 99 ? '99+' : unreadTotal }}</text></view><text class="tab-label">{{ english ? 'Chats' : '会话' }}</text><view :class="['tab-indicator', { visible: screen === 'conversations' }]"></view></view>
+      <view :class="['tab', { selected: screen === 'contacts' }]" @click="switchRootTab('contacts')"><view class="tab-image"><image class="tab-icon" :src="tabImage('contacts')" mode="aspectFit" /></view><text class="tab-label">{{ english ? 'Contacts' : '联系人' }}</text><view :class="['tab-indicator', { visible: screen === 'contacts' }]"></view></view>
+      <view :class="['tab', { selected: screen === 'profile' }]" @click="switchRootTab('profile')"><view class="tab-image"><image class="tab-icon" :src="tabImage('profile')" mode="aspectFit" /></view><text class="tab-label">{{ english ? 'Me' : '我的' }}</text><view :class="['tab-indicator', { visible: screen === 'profile' }]"></view></view>
+    </view>
+    <ECRMLiveUINotice :visible="noticeVisible" :message="noticeMessage" :kind="noticeKind" :position="noticePosition" :dark="darkMode" :english="english" :revision="noticeRevision" @dismiss="dismissNotice" />
+  </view>
+</template>
+
+<script lang="uts">
+import ECRMLiveUIChat from '../../uni_modules/ecrm-live-uikit/components/ECRMLiveUIChat/ECRMLiveUIChat.uvue'
+import ECRMLiveUIConversationList from '../../uni_modules/ecrm-live-uikit/components/ECRMLiveUIConversationList/ECRMLiveUIConversationList.uvue'
+import ECRMLiveUIContactList from '../../uni_modules/ecrm-live-uikit/components/ECRMLiveUIContactList/ECRMLiveUIContactList.uvue'
+import ECRMLiveAuthNavigation from '../../components/ECRMLiveAuthNavigation/ECRMLiveAuthNavigation.uvue'
+import ECRMLiveUINotice from '../../uni_modules/ecrm-live-uikit/components/ECRMLiveUINotice/ECRMLiveUINotice.uvue'
+import { ECRMLiveBusinessContent, ECRMLiveLocation } from '../../uni_modules/ecrm-live-sdk/utssdk/interface.uts'
+import { ECRMLiveUIAction } from '../../uni_modules/ecrm-live-uikit/utssdk/ECRMLiveUIKitFacade.uts'
+import { ECRMLiveBaseConfig } from '../../ECRMLiveConfig.uts'
+import { createECRMLiveVisualPreviewClient } from '../../ECRMLiveVisualPreview.uts'
+import { ECRMLiveBusinessAuth, ECRMLiveCredential, ECRMLiveUser } from '../../ECRMLiveBusinessAuth.uts'
+
+export default {
+  components: { ECRMLiveUIChat, ECRMLiveUIConversationList, ECRMLiveUIContactList, ECRMLiveAuthNavigation, ECRMLiveUINotice },
+  data() {
+    // H5 and WeChat share this page and form logic. Only WeChat's navigation
+    // right inset differs to keep its theme button outside the system capsule.
+    let mobile = '13500000004'
+    let nickname = '月落青川'
+    // #ifdef MP-WEIXIN
+    mobile = '13500000005'
+    nickname = '清欢有度'
+    // #endif
+    return { screen: 'login', client: null as any, appearanceListener: null as any, previewMode: false, darkMode: true, english: false, selectedLanguage: 'zh-CN', mobile, nickname, password: '12345678', passwordHidden: true, captchaID: '', captchaCode: '', captchaImage: '', captchaLoading: false, captchaText: 'A7K2', status: '', noticeVisible: false, noticeMessage: '', noticeKind: 'warning', noticePosition: 'bottom', noticeRevision: 0, userId: '123654', conversationId: '', chatTitle: '', chatSubtitle: '', chatAvatar: '', chatReturnScreen: 'conversations', profileNickname: '', profileAvatar: '', avatarDirectory: {} as any, unreadTotal: 0, notificationsOn: true, soundOn: true, readReceiptsOn: true, statusBarHeight: 0, navigationRightInset: 20, listSyncRevision: 0, credential: null as ECRMLiveCredential | null, demoUsers: [] as ECRMLiveUser[], demoUsersPage: 0, demoUsersHasMore: false, demoUsersLoading: false, demoUsersRefreshing: false, businessAuth: null as ECRMLiveBusinessAuth | null }
+  },
+  computed: {
+    isRootScreen(): boolean { return this.screen === 'conversations' || this.screen === 'contacts' || this.screen === 'profile' },
+    languageName(): string { return this.selectedLanguage === 'en-US' ? 'English' : '简体中文' },
+    languageTag(): string { return this.selectedLanguage === 'en-US' ? 'EN' : '中文' },
+    systemBarColor(): string { if (this.screen === 'login' || this.screen === 'register') return this.darkMode ? '#0E111C' : '#F4F4FF'; if (this.screen === 'chat') return this.darkMode ? '#141827' : '#FFFFFF'; if (this.screen === 'profile' || this.screen === 'settings' || this.screen === 'language') return this.darkMode ? '#12112E' : '#FFFFFF'; return this.darkMode ? '#141827' : '#FFFFFF' },
+    shortcuts(): any[] { return [{ value: '12', title: this.english ? 'Favorites' : '我的收藏', icon: '/static/demo/ECRMLiveProfileFavorites.png' }, { value: '¥88', title: this.english ? 'Wallet' : '我的钱包', icon: '/static/demo/ECRMLiveProfileWallet.png' }, { value: '', title: this.english ? 'QR Card' : '二维码名片', icon: '/static/demo/ECRMLiveProfileQRCode.png' }] },
+    profileItems(): any[] { return [{ key: 'notifications', title: this.english ? 'Notifications' : '通知设置', icon: '/static/demo/ECRMLiveProfileNotifications.png' }, { key: 'privacy', title: this.english ? 'Privacy & Security' : '隐私与安全', icon: '/static/demo/ECRMLiveProfilePrivacy.png' }, { key: 'feedback', title: this.english ? 'Help & Feedback' : '帮助与反馈', icon: '/static/demo/ECRMLiveProfileFeedback.png' }, { key: 'settings', title: this.english ? 'Settings' : '设置', icon: '/static/demo/ECRMLiveProfileSettings.png' }] },
+    notificationItems(): any[] { return [{ key: 'notifications', title: this.english ? 'Notifications' : '通知设置', subtitle: this.english ? 'Push' : '推送通知 Push', value: this.notificationsOn, icon: '/static/demo/ECRMLiveSettingsNotifications.png' }, { key: 'sound', title: this.english ? 'Sound' : '声音', subtitle: this.english ? 'Sound' : '消息提示音 Sound', value: this.soundOn, icon: '/static/demo/ECRMLiveSettingsSound.png' }, { key: 'read', title: this.english ? 'Read Receipts' : '已读回执', subtitle: this.english ? 'Read Receipts' : '已读回执 Receipts', value: this.readReceiptsOn, icon: '/static/demo/ECRMLiveSettingsReadReceipts.png' }] },
+    settingsLinks(): any[] { return [{ title: this.english ? 'Privacy & Security' : '隐私与安全', subtitle: this.english ? 'Privacy Settings' : '隐私设置', icon: '/static/demo/ECRMLiveSettingsPrivacy.png' }, { title: this.english ? 'Account' : '账号管理', subtitle: this.english ? 'Account Management' : '账号管理', icon: '/static/demo/ECRMLiveSettingsAccount.png' }, { title: this.english ? 'Help & Feedback' : '帮助与反馈', subtitle: this.english ? 'Help Center' : '帮助中心', icon: '/static/demo/ECRMLiveProfileFeedback.png' }, { title: this.english ? 'About' : '关于', subtitle: 'v2.4.1', icon: '/static/demo/ECRMLiveSettingsAbout.png' }] },
+    languages(): any[] { return [{ value: 'zh-CN', title: '简体中文', subtitle: 'Simplified Chinese' }, { value: 'en-US', title: 'English', subtitle: 'English' }] }
+  },
+  onLoad(options: any) {
+    const system = uni.getSystemInfoSync() as any
+    this.statusBarHeight = Math.max(0, Number(system.statusBarHeight ?? 0))
+    this.navigationRightInset = this.resolveNavigationRightInset(system)
+    this.businessAuth = new ECRMLiveBusinessAuth(ECRMLiveBaseConfig)
+    if (String(options?.preview ?? '') === '1') {
+      this.openVisualPreview()
+    } else void this.restoreSession().then((restored: boolean) => { if (!restored) void this.loadCaptcha(true) })
+  },
+  onShow() { if (this.client != null && !this.previewMode) void this.client.refreshUserSig(false).then(() => this.syncLatestSession()) },
+  methods: {
+    defaultDemoMobile(): string {
+      let value = '13500000004'
+      // #ifdef MP-WEIXIN
+      value = '13500000005'
+      // #endif
+      return value
+    },
+    restoreLoginPresetIfNeeded() {
+      if (this.screen !== 'login') return
+      if (String(this.mobile ?? '').trim().length === 0) this.mobile = this.defaultDemoMobile()
+      if (String(this.password ?? '').length === 0) this.password = '12345678'
+    },
+    resolveNavigationRightInset(system: any): number {
+      let inset = 20
+      // #ifdef MP-WEIXIN
+      const capsule = uni.getMenuButtonBoundingClientRect() as any
+      const windowWidth = Number(system.windowWidth ?? system.screenWidth ?? 0)
+      if (capsule != null && windowWidth > 0) inset = Math.max(inset, windowWidth - Number(capsule.left ?? windowWidth) + 8)
+      // #endif
+      return inset
+    },
+    switchRootTab(target: string) { if (target !== 'conversations' && target !== 'contacts' && target !== 'profile') return; if (this.screen === target) return; this.screen = target },
+    openRegistration() { this.status = ''; this.captchaCode = ''; this.screen = 'register' },
+    returnToLogin() { this.status = ''; this.captchaCode = ''; this.screen = 'login' },
+    async authenticate() {
+      this.restoreLoginPresetIfNeeded()
+      this.mobile = String(this.mobile ?? '').trim()
+      this.password = String(this.password ?? '')
+      this.captchaCode = String(this.captchaCode ?? '').trim()
+      this.nickname = String(this.nickname ?? '').trim()
+      const missing: string[] = []
+      if (this.mobile.length === 0) missing.push(this.english ? 'mobile' : '手机号')
+      if (this.password.length < 8) missing.push(this.english ? 'an 8-character password' : '至少 8 位密码')
+      if (this.captchaCode.length === 0) missing.push(this.english ? 'verification code' : '图形验证码')
+      if (this.screen === 'register' && this.nickname.length < 2) missing.push(this.english ? 'nickname' : '昵称')
+      if (missing.length > 0) { this.showNotice(this.english ? `Please enter ${missing.join(', ')}.` : `请填写：${missing.join('、')}。`, 'error', 'center'); return }
+      if (this.businessAuth == null || this.captchaID.length === 0) { this.showNotice(this.english ? 'Verification code is not ready.' : '图形验证码尚未准备好。', 'error', 'center'); void this.loadCaptcha(false); return }
+      try { const credential = await this.businessAuth.authenticate(this.screen === 'register', this.mobile, this.nickname, this.password, this.captchaID, this.captchaCode); this.startSession(credential, true) } catch (error) { this.showNotice(`${this.english ? 'Login failed' : '登录失败'}: ${error instanceof Error ? error.message : String(error)}`, 'error', 'center'); this.captchaCode = ''; void this.loadCaptcha(true) }
+    },
+    startSession(credential: ECRMLiveCredential, persist: boolean) {
+      if (this.businessAuth == null) return
+      const provider = this.businessAuth.userSigProvider(credential, (renewed: ECRMLiveCredential) => { if (this.credential == null || this.credential.userId !== credential.userId) return; this.credential = renewed; this.mobile = renewed.mobile; this.nickname = renewed.nickname; this.persistCredential(renewed) })
+      const client = this.businessAuth.sdkBootstrap().login({ sdkAppId: credential.sdkAppId, userId: credential.userId, userSig: credential.userSig, userSigExpireAt: credential.expireAt, userSigProvider: provider })
+      client.updateAppearance(this.darkMode ? 'dark' : 'light', this.english ? 'en-US' : 'zh-CN')
+      client.start()
+      this.client = client
+      this.previewMode = false
+      this.credential = credential
+      this.userId = credential.userId
+      this.mobile = credential.mobile
+      this.nickname = credential.nickname
+      this.profileNickname = credential.nickname
+      this.status = ''
+      this.bindAppearance()
+      this.screen = 'conversations'
+      if (persist) this.persistCredential(credential)
+      void client.refreshUserSig(false).then(() => this.syncLatestSession())
+    },
+    async restoreSession(): Promise<boolean> {
+      const raw = String(uni.getStorageSync('ecrm-live-credential') ?? '')
+      if (raw.length === 0) return false
+      try {
+        const saved = JSON.parse(raw) as any
+        const credential = {
+          sdkAppId: Number(saved['sdkAppId'] ?? 0), userId: String(saved['userId'] ?? ''), userSig: '', expireAt: 0, refreshToken: String(saved['refreshToken'] ?? ''), refreshExpireAt: Number(saved['refreshExpireAt'] ?? 0), mobile: String(saved['mobile'] ?? ''), nickname: String(saved['nickname'] ?? '')
+        } as ECRMLiveCredential
+        if (credential.sdkAppId <= 0 || !/^[1-9][0-9]*$/.test(credential.userId) || credential.refreshToken.length === 0 || credential.refreshExpireAt <= Math.floor(Date.now() / 1000) || this.businessAuth == null) { uni.removeStorageSync('ecrm-live-credential'); return false }
+        const renewed = await this.businessAuth.refresh(credential)
+        this.startSession(renewed, true)
+        return true
+      } catch (_) { uni.removeStorageSync('ecrm-live-credential'); return false }
+    },
+    async reloadCaptcha() { await this.loadCaptcha(false) },
+    async loadCaptcha(silent: boolean) { if (this.businessAuth == null || this.captchaLoading) return; this.captchaLoading = true; try { const captcha = await this.businessAuth.captcha(); this.captchaID = captcha.captchaID; this.captchaImage = captcha.imageData; this.captchaCode = ''; this.status = '' } catch (error) { this.captchaID = ''; this.captchaImage = ''; if (!silent) this.showNotice(`${this.english ? 'Captcha unavailable' : '验证码不可用'}: ${error instanceof Error ? error.message : String(error)}`, 'error', 'center') } finally { this.captchaLoading = false } },
+    openVisualPreview() { const previewClient = createECRMLiveVisualPreviewClient(); previewClient.updateAppearance(this.darkMode ? 'dark' : 'light', this.english ? 'en-US' : 'zh-CN'); this.client = previewClient; this.previewMode = true; this.userId = '123654'; this.status = ''; this.bindAppearance(); this.screen = 'conversations' },
+    openChat(conversationId: string) { this.chatReturnScreen = 'conversations'; this.conversationId = conversationId; const remote = this.client?.localRemoteConversations(100).find((item: any): boolean => String(item.id) === conversationId) as any; this.chatTitle = String(remote?.title ?? this.titleForConversation(conversationId)); this.chatSubtitle = remote?.type === 'group' ? (this.english ? 'Group' : '群聊') : (this.english ? 'Online' : '在线'); this.chatAvatar = this.resolveConversationAvatar(remote); this.screen = 'chat' },
+    openConversationChat(payload: any) { this.chatReturnScreen = 'conversations'; this.conversationId = String(payload.conversationId); this.chatTitle = String(payload.title ?? this.conversationId); this.chatSubtitle = this.chatTitle.indexOf('群') >= 0 ? (this.english ? 'Group' : '群聊') : (this.english ? 'Online' : '在线'); this.chatAvatar = String(payload.avatar ?? ''); this.screen = 'chat' },
+    openContactChat(payload: any) { this.chatReturnScreen = 'contacts'; this.conversationId = String(payload.conversationId); this.chatTitle = String(payload.title ?? this.conversationId); this.chatSubtitle = this.english ? 'Online' : '在线'; this.chatAvatar = String(payload.avatar ?? ''); this.screen = 'chat' },
+    closeChat() { this.screen = this.chatReturnScreen },
+    openDemoGroup() { this.chatReturnScreen = 'contacts'; this.conversationId = 'preview-work'; this.chatTitle = 'Work Team 工作群'; this.chatSubtitle = this.english ? '8 members' : '8位成员'; this.screen = 'chat' },
+    syncLatestSession() { if (this.client == null || this.previewMode) return; this.client.syncNow(); this.client.syncConversationsNow(); this.refreshRealProfile(); this.listSyncRevision += 1 },
+    refreshRealProfile() {
+      if (this.client == null || this.previewMode) return
+      this.client.fetchMyProfile((profile: any, _error: string | null): void => {
+        if (profile != null) { this.profileNickname = String(profile.nickname ?? this.nickname); this.profileAvatar = String(profile.avatar ?? ''); this.setAvatar(this.userId, this.profileAvatar) }
+      })
+      this.client.fetchFriends('', 100, (page: any, _error: string | null): void => {
+        if (page == null) return
+        page.list.forEach((friend: any): void => { if (String(friend.avatar ?? '').length > 0) this.setAvatar(String(friend.userId), String(friend.avatar)) })
+      })
+    },
+    setAvatar(userId: string, avatar: string) { if (avatar.length === 0) return; const next: any = {}; Object.keys(this.avatarDirectory).forEach((key: string): void => { next[key] = this.avatarDirectory[key] }); next[userId] = avatar; this.avatarDirectory = next },
+    resolveConversationAvatar(remote: any): string {
+      if (remote == null) return ''
+      const direct = String(remote.avatar ?? '')
+      if (direct.length > 0) return direct
+      const peerId = String(remote.singleKey ?? '').split(':').find((value: string): boolean => value !== this.userId)
+      return peerId == null ? '' : String(this.avatarDirectory[peerId] ?? '')
+    },
+    updateUnreadTotal(value: any) { this.unreadTotal = Math.max(0, Number(value ?? 0)) },
+    persistCredential(credential: ECRMLiveCredential) { uni.setStorageSync('ecrm-live-credential', JSON.stringify({ sdkAppId: credential.sdkAppId, userId: credential.userId, refreshToken: credential.refreshToken, refreshExpireAt: credential.refreshExpireAt, mobile: credential.mobile, nickname: credential.nickname })) },
+    clearSession() {
+      const activeClient = this.client
+      const listener = this.appearanceListener
+      this.client = null
+      this.appearanceListener = null
+      if (activeClient != null) {
+        try { if (listener != null) activeClient.removeListener(listener); activeClient.stop() } catch (_) {}
+      }
+      uni.removeStorageSync('ecrm-live-credential')
+      this.credential = null
+      this.userId = ''
+      this.conversationId = ''
+      this.chatTitle = ''
+      this.chatSubtitle = ''
+      this.chatAvatar = ''
+      this.profileNickname = ''
+      this.profileAvatar = ''
+      this.avatarDirectory = {}
+      this.unreadTotal = 0
+      this.demoUsers = []
+      this.demoUsersPage = 0
+      this.demoUsersHasMore = false
+      this.previewMode = false
+      this.password = '12345678'
+      this.captchaCode = ''
+      this.status = ''
+      this.noticeVisible = false
+      this.screen = 'login'
+      void this.loadCaptcha(true)
+    },
+    async showAddFriendNotice() { if (this.businessAuth == null || this.credential == null) { this.showNotice(this.english ? 'Please log in before adding friends.' : '请先登录后再添加好友。'); return } this.screen = 'add-friend'; await this.refreshDemoUsers() },
+    async refreshDemoUsers() { if (this.demoUsersLoading || this.businessAuth == null || this.credential == null) return; this.demoUsersRefreshing = true; await this.loadDemoUsers(true); this.demoUsersRefreshing = false },
+    async loadMoreDemoUsers() { if (this.demoUsersLoading || !this.demoUsersHasMore) return; await this.loadDemoUsers(false) },
+    async loadDemoUsers(replacing: boolean) { if (this.businessAuth == null || this.credential == null) return; this.demoUsersLoading = true; try { const page = replacing ? 1 : this.demoUsersPage + 1; const result = await this.businessAuth.users(this.credential, page, 10); this.demoUsers = replacing ? result.items : this.demoUsers.concat(result.items); this.demoUsersPage = result.page; this.demoUsersHasMore = result.hasMore } catch (error) { this.showNotice(`${this.english ? 'Load demo users failed' : '加载演示用户失败'}: ${error instanceof Error ? error.message : String(error)}`) } finally { this.demoUsersLoading = false } },
+    async addDemoFriend(user: ECRMLiveUser) { if (this.businessAuth == null || this.credential == null) return; try { await this.businessAuth.addFriend(this.credential, user.userId); this.showNotice(this.english ? 'Friend added. You can now start a chat.' : '已添加好友，现在可以单聊。'); this.screen = 'contacts' } catch (error) { this.showNotice(`${this.english ? 'Add friend failed' : '添加好友失败'}: ${error instanceof Error ? error.message : String(error)}`) } },
+    demoUserInitial(user: ECRMLiveUser): string { const name = user.nickname.trim(); return name.length > 0 ? name.substring(0, 1) : '?' },
+    logout() { const credential = this.credential; const auth = this.businessAuth; this.clearSession(); if (credential != null && auth != null) { void auth.logout(credential).catch(() => {}) } },
+    bindAppearance() { if (this.client == null) return; if (this.appearanceListener != null) this.client.removeListener(this.appearanceListener); const listener = { onThemeModeChanged: (mode: string) => { this.darkMode = mode === 'dark' }, onLanguageChanged: (language: string) => { this.selectedLanguage = language === 'en-US' ? 'en-US' : 'zh-CN'; this.english = this.selectedLanguage === 'en-US' }, onUserSigRefreshFailed: (_message: string) => { this.clearSession(); this.showNotice(this.english ? 'Session expired. Please log in again.' : '登录状态已失效，请重新登录。', 'warning', 'center') } }; this.appearanceListener = listener; this.client.addListener(listener) },
+    titleForConversation(conversationId: string): string { const titles: Record<string, string> = { '101': 'Alice Chen', '102': 'Work Team 工作群', '103': 'Bob Li', '104': 'Project Alpha' }; return titles[conversationId] ?? conversationId },
+    selectLanguage(language: string) { this.selectedLanguage = language === 'en-US' ? 'en-US' : 'zh-CN'; this.english = this.selectedLanguage === 'en-US'; if (this.client != null) this.client.updateAppearance(null, this.selectedLanguage) },
+    selectTheme(theme: string) { this.darkMode = theme === 'dark'; if (this.client != null) this.client.updateAppearance(this.darkMode ? 'dark' : 'light', null) },
+    tabImage(tab: string): string { if (tab === 'contacts') return this.screen === 'contacts' ? '/static/demo/ECRMLiveTabContactsSelected.png' : '/static/demo/ECRMLiveTabContacts.png'; if (tab === 'profile') return this.screen === 'profile' ? '/static/demo/ECRMLiveTabProfileSelected.png' : '/static/demo/ECRMLiveTabProfile.png'; return '/static/demo/ECRMLiveTabChatsSelected.png' },
+    switchImage(on: boolean): string { return on ? '/static/demo/ECRMLiveToggleOn.png' : '/static/demo/ECRMLiveToggleOff.png' },
+    toggleAppearance() { this.selectTheme(this.darkMode ? 'light' : 'dark') },
+    toggleSetting(key: string) { if (key === 'notifications') this.notificationsOn = !this.notificationsOn; else if (key === 'sound') this.soundOn = !this.soundOn; else this.readReceiptsOn = !this.readReceiptsOn },
+    openProfileItem(key: string) { if (key === 'settings') this.screen = 'settings'; else this.showNotice(this.english ? 'Provided by the business layer' : '由业务层实现') },
+    showNotice(message: string, kind: string = 'warning', position: string = 'bottom') { this.noticeMessage = message; this.noticeKind = kind === 'success' || kind === 'error' || kind === 'warning' ? kind : 'warning'; this.noticePosition = position === 'center' ? 'center' : 'bottom'; this.noticeVisible = true; this.noticeRevision += 1 },
+    dismissNotice() { this.noticeVisible = false },
+    resolveMedia(value: string): string { if (value.length === 0 || value.indexOf('http://') === 0 || value.indexOf('https://') === 0 || value.indexOf('wxfile://') === 0) return value; return ECRMLiveBaseConfig.cosDomain.replace(/\/$/, '') + '/' + value.replace(/^\//, '') },
+    handleMessageAction(payload: any) { this.showNotice(String(payload.action ?? 'message action')) },
+    handleAction(action: ECRMLiveUIAction) { if (this.client == null) return; if (action === 'location') { this.client.sendLocation(this.conversationId, { latitude: 31.2304, longitude: 121.4737, name: 'Shanghai', address: 'ECRMLive' } as ECRMLiveLocation); return } const content = { businessId: `demo-${Date.now()}`, title: action } as ECRMLiveBusinessContent; if (action === 'gift') this.client.sendGift(this.conversationId, content); else if (action === 'red_packet') this.client.sendRedPacket(this.conversationId, content); else if (action === 'order') this.client.sendOrder(this.conversationId, content); else this.showNotice(this.english ? 'Choose media in the host app.' : '请由宿主选择媒体文件。') }
+  }
+}
+</script>
+
+<style>
+.app { display:flex; flex-direction:column; width:100%; height:100%; color:#25233F; background:#F1F1FF; }.app button { border:0; outline:0; box-shadow:none; -webkit-appearance:none; appearance:none; }.app button::after { border:0; }.app.dark { color:#F0EFFF; background:#08081F; }.system-status-bar { flex:none; width:100%; }.auth-page,.root-screen,.sub-page,.chat-screen { flex:1; min-height:0; }.auth-page { display:flex; flex-direction:column; background:radial-gradient(circle at 50% 21%,#E6E1FF 0,#F4F4FF 48%,#F1F3FF 100%); }.dark .auth-page { background:#0D0D21; }.auth-scroll,.profile-scroll,.settings-scroll { flex:1; min-height:0; }.auth-content { padding:0 30px 28px; }.auth-brand { display:flex; flex-direction:column; align-items:center; margin:38px 0 31px; }.dark .auth-brand { margin-bottom:19px; }.auth-logo { width:103px; height:103px; }.auth-title { margin-top:34px; color:#17182B; font-size:29px; font-weight:700; line-height:35px; }.auth-subtitle { margin-top:12px; color:#656982; font-size:14px; line-height:20px; }.auth-card { padding:26px 24px 24px; border-radius:24px; background:#FFF; box-shadow:0 8px 18px rgba(0,0,0,.13); }.dark .auth-title,.dark .auth-label { color:#F0EDFF; }.dark .auth-subtitle { color:#A69FC7; }.dark .auth-card { border:1px solid #39345A; background:#11102A; box-shadow:none; }.auth-label { display:block; margin:0 0 8px; color:#17182B; font-size:13px; font-weight:700; line-height:18px; }.auth-input { box-sizing:border-box; width:100%; height:46px; margin:0 0 10px; padding:0 16px; border:0; border-radius:18px; color:#17182B; background:#EDE9FF; font-size:15px; }.auth-input::placeholder { color:#656982; }.dark .auth-input { color:#F0EDFF; background:#201E4C; }.dark .auth-input::placeholder { color:#A69FC7; }.auth-password-row { position:relative; margin-bottom:10px; }.auth-password-row .auth-input { margin-bottom:0; padding-right:48px; }.auth-password-toggle { position:absolute; top:11px; right:14px; width:24px; height:24px; }.auth-password-toggle.is-dark { filter:brightness(0) invert(1); }.captcha-row { display:flex; flex-direction:row; gap:10px; }.captcha-input { flex:1; min-width:0; }.captcha,.captcha-image { width:132px; height:46px; margin:0; padding:0; border:0; border-radius:14px; color:#5732C8; background:#EDE9FF; font-size:17px; font-weight:800; letter-spacing:3px; }.captcha-image { border-radius:0; background:#FFF; object-fit:contain; }.dark .captcha { color:#E3D8FF; background:#282556; }.auth-submit { display:flex; flex-direction:row; align-items:center; justify-content:center; width:100%; height:50px; margin-top:14px; padding:0; border:0; border-radius:18px; color:#FFF; background:linear-gradient(90deg,#8F57F5,#8B4FEC); font-size:16px; font-weight:700; }.auth-submit image { width:18px; height:18px; margin-right:10px; }.auth-register { display:block; height:46px; margin:8px auto 0; padding:0; border:0; color:#7130E0; background:transparent; font-size:13px; }.dark .auth-register { color:#F0EDFF; }.auth-status { display:block; margin-top:8px; color:#E14B5A; font-size:11px; line-height:16px; text-align:center; }
+.page-header { display:flex; flex-direction:row; align-items:center; height:44px; padding:0 20px; background:#FFF; }.page-header image { width:28px; height:28px; margin-right:10px; }.page-header text { color:#25233F; font-size:18px; font-weight:700; }.dark .page-header { background:#12112E; }.dark .page-header text { color:#F0EFFF; }.profile-page { display:flex; flex-direction:column; }.identity { display:flex; flex-direction:row; align-items:center; height:112px; padding:0 20px; background:linear-gradient(90deg,#E1E4FF,#D7EBFF); }.dark .identity { background:linear-gradient(90deg,#12123A,#0A1734); }.identity-avatar { position:relative; display:flex; align-items:center; justify-content:center; width:64px; height:64px; overflow:visible; border-radius:18px; color:#FFF; background:#4867E9; font-size:24px; font-weight:700; }.identity-avatar > text,.identity-avatar > image { position:relative; z-index:1; }.identity-avatar > view { position:absolute; z-index:2; right:-2px; bottom:-2px; width:17px; height:17px; border:2px solid #FFF; border-radius:50%; background:#09BF6B; box-sizing:border-box; }.identity-copy { display:flex; flex:1; flex-direction:column; margin-left:16px; }.identity-copy text:first-child { color:#25233F; font-size:16px; font-weight:700; }.identity-copy text:last-child { margin-top:4px; color:#76758F; font-size:11px; }.dark .identity-copy text:first-child { color:#F0EFFF; }.dark .identity-copy text:last-child { color:#9A98B7; }.chevron { color:#76758F; font-size:24px; }.shortcut-row { display:flex; flex-direction:row; height:94px; background:#FFF; }.dark .shortcut-row { background:#12112E; }.shortcut { display:flex; flex:1; flex-direction:column; align-items:center; justify-content:center; color:#76758F; font-size:10px; }.shortcut image { width:22px; height:22px; }.shortcut-value { min-height:15px; margin:3px 0; color:#25233F; font-size:13px; font-weight:600; }.dark .shortcut-value { color:#F0EFFF; }.profile-rows { padding:14px 20px 0; }.profile-row { display:flex; flex-direction:row; align-items:center; height:56px; border-bottom:1px solid #E8E7F6; color:#25233F; font-size:14px; }.profile-row image { width:22px; height:22px; margin:0 14px 0 2px; }.profile-row > text:nth-child(2) { flex:1; }.dark .profile-row { border-color:#29254D; color:#F0EFFF; }.language-tag { padding:6px 12px; border-radius:16px; color:#7D42EF; background:#E8E0FF; font-size:12px; font-weight:600; }.dark .language-tag { background:#281951; }.switch { display:flex; align-items:center; width:44px; height:24px; padding:2px; border-radius:14px; background:#C9C7D8; box-sizing:border-box; }.switch view { width:20px; height:20px; border-radius:50%; background:#FFF; transition:transform .18s; }.switch.on { justify-content:flex-end; background:#8346F3; }.logout { display:flex; flex-direction:row; align-items:center; justify-content:center; width:calc(100% - 40px); height:48px; margin:14px 20px 24px; padding:0; border:0; border-radius:16px; color:#ED3340; background:#F4DFE7; font-size:14px; font-weight:600; }.logout image { width:18px; height:18px; margin-right:8px; }.dark .logout { background:#2A0F21; }
+.identity-avatar > image { display:block; width:64px; height:64px; overflow:hidden; border-radius:18px; object-fit:cover; }
+.sub-page { display:flex; flex-direction:column; background:#F1F1FF; }.dark .sub-page { background:#08081F; }.back-header { display:flex; flex-direction:row; align-items:center; height:44px; padding:0 16px; border-bottom:1px solid #E8E7F6; background:#FFF; }.back-header button { display:flex; align-items:center; justify-content:center; width:32px; height:44px; margin:0 12px 0 0; padding:0; border:0; background:transparent; }.back-header button image { width:24px; height:24px; }.back-header button text { color:#25233F; font-size:32px; line-height:40px; }.back-header > text { color:#25233F; font-size:17px; font-weight:700; }.dark .back-header { border-color:#29254D; background:#12112E; }.dark .back-header > text { color:#F0EFFF; }.settings-content { padding:18px 20px; }.setting-card,.language-card { overflow:hidden; margin-bottom:16px; border:1px solid #E8E7F6; border-radius:16px; background:#FFF; }.dark .setting-card,.dark .language-card { border-color:#29254D; background:#12112E; }.setting-title { display:block; height:40px; padding:14px 16px 0; border-bottom:1px solid #E8E7F6; color:#76758F; font-size:10px; font-weight:700; box-sizing:border-box; }.dark .setting-title { border-color:#29254D; color:#9A98B7; }.settings-row { display:flex; flex-direction:row; align-items:center; height:68px; padding:0 16px; border-bottom:1px solid #E8E7F6; }.settings-row:last-child { border-bottom:0; }.settings-row > image { width:22px; height:22px; margin-right:14px; }.settings-row > view:nth-child(2) { display:flex; flex:1; flex-direction:column; }.settings-row > view:nth-child(2) text:first-child { color:#25233F; font-size:14px; }.settings-row > view:nth-child(2) text:last-child { margin-top:2px; color:#76758F; font-size:11px; }.dark .settings-row { border-color:#29254D; }.dark .settings-row > view:nth-child(2) text:first-child { color:#F0EFFF; }.dark .settings-row > view:nth-child(2) text:last-child { color:#9A98B7; }.version { display:flex; flex-direction:column; align-items:center; margin:8px 0 22px; color:#76758F; font-size:11px; }.version text:last-child { margin-top:4px; font-size:10px; }.language-card { margin:20px; }.language-row { display:flex; flex-direction:row; align-items:center; height:66px; padding:0 16px; border-bottom:1px solid #E8E7F6; }.language-row:last-child { border-bottom:0; }.language-row > view:first-child { display:flex; flex:1; flex-direction:column; }.language-row text:first-child { color:#25233F; font-size:15px; font-weight:600; }.language-row text:last-child { margin-top:2px; color:#76758F; font-size:11px; }.dark .language-row { border-color:#29254D; }.dark .language-row text:first-child { color:#F0EFFF; }.dark .language-row text:last-child { color:#9A98B7; }.radio { width:12px; height:12px; border-radius:50%; background:#D9D8E8; }.radio.selected { background:#8346F3; }
+.demo-user-list { padding:16px 20px 28px; }.demo-user-row { display:flex; flex-direction:row; align-items:center; width:100%; min-height:76px; margin:0 0 12px; padding:0 14px; border:1px solid #E8E4FF; border-radius:18px; background:#FFF; box-sizing:border-box; }.demo-user-avatar { display:flex; flex:none; align-items:center; justify-content:center; width:42px; height:42px; border-radius:21px; color:#FFF; background:#8A4DF3; font-size:17px; font-weight:700; }.demo-user-copy { display:flex; flex:1; min-width:0; flex-direction:column; margin-left:12px; }.demo-user-copy text:first-child { overflow:hidden; color:#25233F; font-size:15px; font-weight:700; line-height:21px; text-overflow:ellipsis; white-space:nowrap; }.demo-user-copy text:last-child { overflow:hidden; margin-top:4px; color:#76758F; font-size:11px; line-height:16px; text-overflow:ellipsis; white-space:nowrap; }.demo-user-add { display:flex; flex:none; align-items:center; justify-content:center; width:62px; height:32px; margin-left:12px; padding:0; border:0; border-radius:16px; color:#7D42EF; background:#F0E9FF; font-size:13px; font-weight:700; }.demo-user-empty { display:block; padding:20px 0; color:#76758F; font-size:13px; text-align:center; }.demo-user-load-state { display:flex; height:32px; align-items:center; justify-content:center; margin:0 0 12px; border-radius:10px; color:#6D56B3; background:#E9E5FF; font-size:11px; }.demo-user-load-state { margin:4px 0 0; }.dark .demo-user-row { border-color:#2C2852; background:#151432; }.dark .demo-user-copy text:first-child { color:#F0EFFF; }.dark .demo-user-copy text:last-child,.dark .demo-user-empty { color:#A8A2C7; }.dark .demo-user-load-state { color:#D5CBFF; background:#24204D; }.dark .demo-user-add { color:#E0D1FF; background:#2A2059; }
+.tabbar { display:flex; flex-direction:row; height:60px; padding-bottom:env(safe-area-inset-bottom); overflow:visible; border-top:1px solid #ECEBFA; background:#FFF; box-sizing:content-box; }.dark .tabbar { border-color:#29254D; background:#11102A; }.tab { position:relative; display:flex; flex:1; flex-direction:column; align-items:center; justify-content:center; height:60px; margin:0; padding:0; overflow:visible; border:0; border-radius:0; color:#75748D; background:transparent; box-shadow:none; font-size:12px; }.dark .tab { color:#9A98B7; }.tab.selected { color:#8A43F4; font-weight:600; }.tab-label,.tab-label .space,.tab-label > .space { display:block; font-size:12px !important; line-height:16px !important; font-weight:inherit; }.tab-image { position:relative; display:flex; align-items:center; justify-content:center; width:54px; height:24px; overflow:visible; }.tab-image image { width:22px; height:22px; opacity:.66; }.tab.selected .tab-image image { opacity:1; }.tab-badge { position:absolute; z-index:2; top:-7px; right:0; display:flex; align-items:center; justify-content:center; width:16px; height:16px; overflow:visible; border-radius:8px; color:#FFF; background:#F02B38; font-size:9px; font-weight:700; }.tab-indicator { position:absolute; bottom:0; width:26px; height:2px; border-radius:1px; opacity:0; background:#8A43F4; }.tab-indicator.visible { opacity:1; }.chat-screen { overflow:hidden; }
+.switch-image { flex:none; width:48px !important; height:24px !important; margin:0 !important; }.tab-image .tab-icon { width:22px; height:22px; opacity:1; }.tab-image .tab-icon.chat-unselected { filter:grayscale(1) brightness(.88); }.dark .tab-image .tab-icon.chat-unselected { filter:grayscale(1) brightness(1.20); }
+@media screen and (min-width:431px) { .app { width:390px; margin-left:auto; margin-right:auto; } }
+</style>

@@ -1,0 +1,11 @@
+<script lang="uts">
+import { ECRMLiveBaseConfig } from './ECRMLiveConfig.uts'
+export default {
+  // Domains are declared once for the app and never collected on the login page.
+  onLaunch() { console.log(`ECRMLive started: ${ECRMLiveBaseConfig.apiDomain}`) }
+}
+</script>
+
+<style>
+page { background-color: #F4F4FF; }
+</style>
